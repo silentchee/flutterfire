@@ -46,6 +46,7 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
   private Context applicationContext;
   private Activity mainActivity;
   private boolean isInitialized = false;
+  FirebaseApp firebaseApp;
 
   public static void registerWith(Registrar registrar) {
     FirebaseMessagingPlugin instance = new FirebaseMessagingPlugin();
@@ -147,6 +148,13 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
     return content;
   }
 
+  FirebaseInstanceId getInstance(){
+    if(firebaseApp!=null){
+      return FirebaseInstanceId.getInstance(firebaseApp);
+    }
+   return FirebaseInstanceId.getInstance();
+  }
+
   @Override
   public void onMethodCall(final MethodCall call, final Result result) {
     /*  Even when the app is not active the `FirebaseMessagingService` extended by
@@ -181,7 +189,9 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
     } else if ("FcmDartService#initialized".equals(call.method)) {
       FlutterFirebaseMessagingService.onInitialized();
       result.success(true);
+
     } else if ("configure".equals(call.method)) {
+
       if (!isInitialized) {
         if (call.arguments instanceof Map) {
           @SuppressWarnings("unchecked")
@@ -207,13 +217,14 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
                   .setDatabaseUrl(arguments.get("databaseUrl"))
                   .setGaTrackingId(arguments.get("gaTrackingId"))
                   .build();
-          FirebaseApp.initializeApp(applicationContext, options);
+          firebaseApp = FirebaseApp.initializeApp(applicationContext, options, "CUSTOM");
         } else {
-          FirebaseApp.initializeApp(applicationContext);
+          firebaseApp = FirebaseApp.initializeApp(applicationContext);
         }
         isInitialized = true;
       }
-      FirebaseInstanceId.getInstance()
+
+      getInstance()
           .getInstanceId()
           .addOnCompleteListener(
               new OnCompleteListener<InstanceIdResult>() {
@@ -265,7 +276,7 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
                 }
               });
     } else if ("getToken".equals(call.method)) {
-      FirebaseInstanceId.getInstance()
+      getInstance()
           .getInstanceId()
           .addOnCompleteListener(
               new OnCompleteListener<InstanceIdResult>() {
@@ -286,7 +297,7 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
                 @Override
                 public void run() {
                   try {
-                    FirebaseInstanceId.getInstance().deleteInstanceId();
+                   getInstance().deleteInstanceId();
                     if (mainActivity != null) {
                       mainActivity.runOnUiThread(
                           new Runnable() {
