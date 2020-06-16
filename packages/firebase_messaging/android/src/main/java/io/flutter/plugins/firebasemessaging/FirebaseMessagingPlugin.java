@@ -218,9 +218,9 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
                   .setGaTrackingId(arguments.get("gaTrackingId"))
                   .build();
           try {
-            firebaseApp = FirebaseApp.initializeApp(applicationContext, options, "CUSTOM");
+            firebaseApp = FirebaseApp.initializeApp(applicationContext, options, "CUSTOM_A");
           } catch (IllegalStateException e){
-            firebaseApp = FirebaseApp.getInstance("CUSTOM");
+            firebaseApp = FirebaseApp.getInstance("CUSTOM_A");
           }
         } else {
           firebaseApp = FirebaseApp.initializeApp(applicationContext);
