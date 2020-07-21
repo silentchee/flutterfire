@@ -119,8 +119,9 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
     }
 
     if (action.equals(FlutterFirebaseMessagingService.ACTION_TOKEN)) {
-      String token = intent.getStringExtra(FlutterFirebaseMessagingService.EXTRA_TOKEN);
-      channel.invokeMethod("onToken", token);
+      // dont want main app token
+     // String token = intent.getStringExtra(FlutterFirebaseMessagingService.EXTRA_TOKEN);
+     // channel.invokeMethod("onToken", token);
     } else if (action.equals(FlutterFirebaseMessagingService.ACTION_REMOTE_MESSAGE)) {
       RemoteMessage message =
           intent.getParcelableExtra(FlutterFirebaseMessagingService.EXTRA_REMOTE_MESSAGE);
@@ -152,7 +153,7 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
     if(firebaseApp!=null){
       return FirebaseInstanceId.getInstance(firebaseApp);
     }
-   return FirebaseInstanceId.getInstance();
+   return null;
   }
 
   @Override
@@ -220,6 +221,7 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
           try {
             firebaseApp = FirebaseApp.initializeApp(applicationContext, options, "CUSTOM_A");
           } catch (IllegalStateException e){
+
             firebaseApp = FirebaseApp.getInstance("CUSTOM_A");
           }
         } else {
@@ -228,19 +230,21 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
         isInitialized = true;
       }
 
-      getInstance()
-          .getInstanceId()
-          .addOnCompleteListener(
-              new OnCompleteListener<InstanceIdResult>() {
-                @Override
-                public void onComplete(@NonNull Task<InstanceIdResult> task) {
-                  if (!task.isSuccessful()) {
-                    Log.w(TAG, "getToken, error fetching instanceID: ", task.getException());
-                    return;
-                  }
-                  channel.invokeMethod("onToken", task.getResult().getToken());
-                }
-              });
+      FirebaseInstanceId instanceId =  getInstance();
+        if(instanceId!=null) {
+          instanceId.getInstanceId()
+                  .addOnCompleteListener(
+                          new OnCompleteListener<InstanceIdResult>() {
+                            @Override
+                            public void onComplete(@NonNull Task<InstanceIdResult> task) {
+                              if (!task.isSuccessful()) {
+                                Log.w(TAG, "getToken, error fetching instanceID: ", task.getException());
+                                return;
+                              }
+                              channel.invokeMethod("onToken", task.getResult().getToken());
+                            }
+                          });
+        }
       if (mainActivity != null) {
         sendMessageFromIntent("onLaunch", mainActivity.getIntent());
       }
@@ -280,36 +284,42 @@ public class FirebaseMessagingPlugin extends BroadcastReceiver
                 }
               });
     } else if ("getToken".equals(call.method)) {
-      getInstance()
-          .getInstanceId()
-          .addOnCompleteListener(
-              new OnCompleteListener<InstanceIdResult>() {
-                @Override
-                public void onComplete(@NonNull Task<InstanceIdResult> task) {
-                  if (!task.isSuccessful()) {
-                    Log.w(TAG, "getToken, error fetching instanceID: ", task.getException());
-                    result.success(null);
-                    return;
-                  }
+      FirebaseInstanceId instanceId =  getInstance();
+      if(instanceId!=null) {
+        getInstance()
+                .getInstanceId()
+                .addOnCompleteListener(
+                        new OnCompleteListener<InstanceIdResult>() {
+                          @Override
+                          public void onComplete(@NonNull Task<InstanceIdResult> task) {
+                            if (!task.isSuccessful()) {
+                              Log.w(TAG, "getToken, error fetching instanceID: ", task.getException());
+                              result.success(null);
+                              return;
+                            }
 
-                  result.success(task.getResult().getToken());
-                }
-              });
+                            result.success(task.getResult().getToken());
+                          }
+                        });
+      }
     } else if ("deleteInstanceID".equals(call.method)) {
       new Thread(
               new Runnable() {
                 @Override
                 public void run() {
                   try {
-                   getInstance().deleteInstanceId();
-                    if (mainActivity != null) {
-                      mainActivity.runOnUiThread(
-                          new Runnable() {
-                            @Override
-                            public void run() {
-                              result.success(true);
-                            }
-                          });
+                    FirebaseInstanceId instanceId =  getInstance();
+                    if(instanceId!=null) {
+                      getInstance().deleteInstanceId();
+                      if (mainActivity != null) {
+                        mainActivity.runOnUiThread(
+                                new Runnable() {
+                                  @Override
+                                  public void run() {
+                                    result.success(true);
+                                  }
+                                });
+                      }
                     }
                   } catch (IOException ex) {
                     Log.e(TAG, "deleteInstanceID, error:", ex);
