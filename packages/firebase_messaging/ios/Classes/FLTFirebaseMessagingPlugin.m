@@ -57,188 +57,11 @@ static NSObject<FlutterPluginRegistrar> *_registrar;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
-  NSString *method = call.method;
-  if ([@"requestNotificationPermissions" isEqualToString:method]) {
-    NSDictionary *arguments = call.arguments;
-    if (@available(iOS 10.0, *)) {
-      UNAuthorizationOptions authOptions = 0;
-      NSNumber *provisional = arguments[@"provisional"];
-      if ([arguments[@"sound"] boolValue]) {
-        authOptions |= UNAuthorizationOptionSound;
-      }
-      if ([arguments[@"alert"] boolValue]) {
-        authOptions |= UNAuthorizationOptionAlert;
-      }
-      if ([arguments[@"badge"] boolValue]) {
-        authOptions |= UNAuthorizationOptionBadge;
-      }
-
-      NSNumber *isAtLeastVersion12;
-      if (@available(iOS 12, *)) {
-        isAtLeastVersion12 = [NSNumber numberWithBool:YES];
-        if ([provisional boolValue]) authOptions |= UNAuthorizationOptionProvisional;
-      } else {
-        isAtLeastVersion12 = [NSNumber numberWithBool:NO];
-      }
-
-      [[UNUserNotificationCenter currentNotificationCenter]
-          requestAuthorizationWithOptions:authOptions
-                        completionHandler:^(BOOL granted, NSError *_Nullable error) {
-                          if (error) {
-                            result(getFlutterError(error));
-                            return;
-                          }
-                          // This works for iOS >= 10. See
-                          // [UIApplication:didRegisterUserNotificationSettings:notificationSettings]
-                          // for ios < 10.
-                          [[UNUserNotificationCenter currentNotificationCenter]
-                              getNotificationSettingsWithCompletionHandler:^(
-                                  UNNotificationSettings *_Nonnull settings) {
-                                NSDictionary *settingsDictionary = @{
-                                  @"sound" : [NSNumber numberWithBool:settings.soundSetting ==
-                                                                      UNNotificationSettingEnabled],
-                                  @"badge" : [NSNumber numberWithBool:settings.badgeSetting ==
-                                                                      UNNotificationSettingEnabled],
-                                  @"alert" : [NSNumber numberWithBool:settings.alertSetting ==
-                                                                      UNNotificationSettingEnabled],
-                                  @"provisional" :
-                                      [NSNumber numberWithBool:granted && [provisional boolValue] &&
-                                                               isAtLeastVersion12],
-                                };
-                                [self->_channel invokeMethod:@"onIosSettingsRegistered"
-                                                   arguments:settingsDictionary];
-                              }];
-                          result([NSNumber numberWithBool:granted]);
-                        }];
-
-      [[UIApplication sharedApplication] registerForRemoteNotifications];
-    } else {
-      UIUserNotificationType notificationTypes = 0;
-      if ([arguments[@"sound"] boolValue]) {
-        notificationTypes |= UIUserNotificationTypeSound;
-      }
-      if ([arguments[@"alert"] boolValue]) {
-        notificationTypes |= UIUserNotificationTypeAlert;
-      }
-      if ([arguments[@"badge"] boolValue]) {
-        notificationTypes |= UIUserNotificationTypeBadge;
-      }
-
-      UIUserNotificationSettings *settings =
-          [UIUserNotificationSettings settingsForTypes:notificationTypes categories:nil];
-      [[UIApplication sharedApplication] registerUserNotificationSettings:settings];
-
-      [[UIApplication sharedApplication] registerForRemoteNotifications];
-      result([NSNumber numberWithBool:YES]);
-    }
-  } else if ([@"configure" isEqualToString:method]) {
-    if (![FIRApp appNamed:@"__FIRAPP_DEFAULT"]) {
-      NSLog(@"Configuring the default Firebase app...");
-
-      if (call.arguments != nil && [call.arguments isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *arguments = call.arguments;
-        NSString *googleAppId, *gcmSenderId, *clientId, *apiKey, *bundleId, *projectId,
-            *storageBucket, *databaseUrl;
-
-        if ((googleAppId = [arguments objectForKey:@"googleAppId"]) == nil) {
-          result([FlutterError errorWithCode:@"googleAppId"
-                                     message:@"googleAppId must not be empty"
-                                     details:nil]);
-          return;
-        }
-        if ((gcmSenderId = [arguments objectForKey:@"gcmSenderId"]) == nil) {
-          result([FlutterError errorWithCode:@"gcmSenderId"
-                                     message:@"gcmSenderId must not be empty"
-                                     details:nil]);
-          return;
-        }
-
-        FIROptions *options = [[FIROptions alloc] initWithGoogleAppID:googleAppId
-                                                          GCMSenderID:gcmSenderId];
-
-        if ((clientId = [arguments objectForKey:@"clientId"]) == nil) {
-          [options setClientID:clientId];
-        }
-        if ((apiKey = [arguments objectForKey:@"apiKey"]) != nil) {
-          [options setAPIKey:apiKey];
-        }
-        if ((bundleId = [arguments objectForKey:@"bundleId"]) != nil) {
-          [options setBundleID:bundleId];
-        }
-        if ((projectId = [arguments objectForKey:@"projectId"]) != nil) {
-          [options setProjectID:projectId];
-        }
-        if ((storageBucket = [arguments objectForKey:@"storageBucket"]) != nil) {
-          [options setStorageBucket:storageBucket];
-        }
-        if ((databaseUrl = [arguments objectForKey:@"databaseUrl"]) != nil) {
-          [options setDatabaseURL:databaseUrl];
-        }
-        [FIRApp configureWithOptions:options];
-      } else {
-        [FIRApp configure];
-      }
-      [FIRMessaging messaging].delegate = self;
-      NSLog(@"Configured the default Firebase app %@.", [FIRApp defaultApp].name);
-    }
-
-    [FIRMessaging messaging].shouldEstablishDirectChannel = true;
-    [[UIApplication sharedApplication] registerForRemoteNotifications];
-    if (_launchNotification != nil && _launchNotification[kGCMMessageIDKey]) {
-      [_channel invokeMethod:@"onLaunch" arguments:_launchNotification];
-    }
-    result(nil);
-  } else if ([@"subscribeToTopic" isEqualToString:method]) {
-    NSString *topic = call.arguments;
-    [[FIRMessaging messaging] subscribeToTopic:topic
-                                    completion:^(NSError *error) {
-                                      result(getFlutterError(error));
-                                    }];
-  } else if ([@"unsubscribeFromTopic" isEqualToString:method]) {
-    NSString *topic = call.arguments;
-    [[FIRMessaging messaging] unsubscribeFromTopic:topic
-                                        completion:^(NSError *error) {
-                                          result(getFlutterError(error));
-                                        }];
-  } else if ([@"getToken" isEqualToString:method]) {
-    [[FIRInstanceID instanceID]
-        instanceIDWithHandler:^(FIRInstanceIDResult *_Nullable instanceIDResult,
-                                NSError *_Nullable error) {
-          if (error != nil) {
-            NSLog(@"getToken, error fetching instanceID: %@", error);
-            result(nil);
-          } else {
-            result(instanceIDResult.token);
-          }
-        }];
-  } else if ([@"deleteInstanceID" isEqualToString:method]) {
-    [[FIRInstanceID instanceID] deleteIDWithHandler:^void(NSError *_Nullable error) {
-      if (error.code != 0) {
-        NSLog(@"deleteInstanceID, error: %@", error);
-        result([NSNumber numberWithBool:NO]);
-      } else {
-        [[UIApplication sharedApplication] unregisterForRemoteNotifications];
-        result([NSNumber numberWithBool:YES]);
-      }
-    }];
-  } else if ([@"autoInitEnabled" isEqualToString:method]) {
-    BOOL value = [[FIRMessaging messaging] isAutoInitEnabled];
-    result([NSNumber numberWithBool:value]);
-  } else if ([@"setAutoInitEnabled" isEqualToString:method]) {
-    NSNumber *value = call.arguments;
-    [FIRMessaging messaging].autoInitEnabled = value.boolValue;
-    result(nil);
-  } else {
-    result(FlutterMethodNotImplemented);
-  }
+  // NSString *method = call.method;
+  
 }
 
 #if defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0
-// Received data message on iOS 10 devices while app is in the foreground.
-// Only invoked if method swizzling is enabled.
-- (void)applicationReceivedRemoteMessage:(FIRMessagingRemoteMessage *)remoteMessage {
-  [self didReceiveRemoteNotification:remoteMessage.appData];
-}
 
 // Received data message on iOS 10 devices while app is in the foreground.
 // Only invoked if method swizzling is disabled and UNUserNotificationCenterDelegate has been
@@ -320,13 +143,7 @@ static NSObject<FlutterPluginRegistrar> *_registrar;
 
 - (void)application:(UIApplication *)application
     didRegisterForRemoteNotificationsWithDeviceToken:(NSData *)deviceToken {
-#ifdef DEBUG
-  [[FIRMessaging messaging] setAPNSToken:deviceToken type:FIRMessagingAPNSTokenTypeSandbox];
-#else
-  [[FIRMessaging messaging] setAPNSToken:deviceToken type:FIRMessagingAPNSTokenTypeProd];
-#endif
 
-  [_channel invokeMethod:@"onToken" arguments:[FIRMessaging messaging].FCMToken];
 }
 
 // This will only be called for iOS < 10. For iOS >= 10, we make this call when we request
@@ -342,14 +159,5 @@ static NSObject<FlutterPluginRegistrar> *_registrar;
   [_channel invokeMethod:@"onIosSettingsRegistered" arguments:settingsDictionary];
 }
 
-- (void)messaging:(nonnull FIRMessaging *)messaging
-    didReceiveRegistrationToken:(nonnull NSString *)fcmToken {
-  [_channel invokeMethod:@"onToken" arguments:fcmToken];
-}
-
-- (void)messaging:(FIRMessaging *)messaging
-    didReceiveMessage:(FIRMessagingRemoteMessage *)remoteMessage {
-  [_channel invokeMethod:@"onMessage" arguments:remoteMessage.appData];
-}
 
 @end
